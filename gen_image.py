@@ -1,303 +1,241 @@
-"""Paint the news-image-20261124 front page: one picture that sums up
-Tuesday 24 November 2026.
+"""Paint the front page for Tuesday 24 November 2026.
 
-This file only runs at build time (here, with Pillow). The graded
-program is main.py, which hands the finished art.jpg to the output
-folder. Everything on the page is drawn with PIL primitives -- shapes
-and text, no photos, no borrowed artwork -- so every headline reads
-exactly as spelled below.
+Build-time artwork generator (Pillow). Every shape and line of text
+below is drawn by this script -- no photographs, no outside artwork.
+The page it paints is saved next to this file as art.jpg, a
+1024x1024 JPEG, and main.py later checks and ships that file.
 
-The day's stories, verified against reporting dated 24 Nov 2026
-by web search this run:
+The stories are the day's verified headlines:
 
-  LEAD: Ukraine says its naval drones sank the Russian corvette
-  Merkury at the Benghazi naval base in Libya on 23 Nov -- the
-  Black Sea fight reaching the Mediterranean. Libya demands
-  explanations from Kyiv; the UN seeks a probe.
-  1. Russia is testing Article 5: 25 airspace violations against
-  NATO members in 2026, four times the 2024 total; two missiles
-  and a drone crashed in Poland on 20 Nov. Putin is reportedly
-  open to Article 5-style security guarantees for Ukraine if no
-  NATO troops deploy.
-  2. The ICJ Rohingya ruling: 14 countries (the UK, Spain, Canada,
-  Australia and 10 more) recognise the court's ruling that Myanmar
-  committed genocide against the Rohingya.
-  3. Markets surge on Nvidia reinstating Jensen Huang after Trump
-  intervened: Kospi +6-7%, Nikkei +3.91%, Nasdaq +6.51%,
-  S&P 500 +4.73%.
-  4. The US Treasury sanctions two dozen-plus Iranian exchange
-  houses; Hormuz mines and Gulf strike tensions run high, and
-  Iran rules out negotiation until Washington meets 7 conditions.
-  Also today: COP31 collapsed in Antalya over fossil-fuel wording
-  (first COP failure since 2009; COP32 goes to Addis Ababa) --
-  yesterday's lead, a strip item here; a 5.6 quake in Nepal near
-  the China border; a factory fire in Cikande, Indonesia, with
-  casualties; a 9th measles death in Pennsylvania.
+  lead   Ukraine's sea drones sank the Russian corvette Merkury at
+         the Benghazi naval base in Libya on 23 Nov; Libya wants
+         answers from Kyiv and the UN wants a probe.
+  one    25 Russian airspace violations against NATO members in
+         2026, four times the 2024 total; missiles and a drone
+         came down in Poland on 20 Nov.
+  two    Fourteen countries recognise the ICJ ruling that Myanmar
+         committed genocide against the Rohingya.
+  three  Markets surged as Nvidia reinstated Jensen Huang after
+         Trump intervened: Kospi, Nikkei, Nasdaq, S&P all up hard.
+  four   US Treasury sanctions on two dozen Iranian exchange
+         houses, against a backdrop of Hormuz tension.
+  strip  Putin reportedly open to Article 5-style guarantees for
+         Ukraine if no NATO troops are deployed.
+  foot   COP31 collapsed in Antalya; a 5.6 quake in Nepal; a
+         factory fire in Cikande, Indonesia; a ninth measles
+         death in Pennsylvania.
+
+Run:  python3 gen_image.py
 """
 
-import math
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 SIDE = 1024
-MARGIN = 36
-RIGHT = SIDE - MARGIN
+HERE = Path(__file__).resolve().parent
+TARGET = HERE / "art.jpg"
 
-PALETTE = {
-    "paper": (247, 243, 234),
-    "ink": (26, 26, 26),
-    "grey": (74, 74, 74),
-    "navy": (26, 42, 74),
-    "red": (178, 34, 34),
-    "steel": (96, 108, 124),
-    "sky": (206, 224, 236),
-    "gold": (196, 152, 44),
-    "green": (46, 110, 62),
-    "white": (252, 251, 247),
-    "blue": (70, 110, 180),
-    "rise": (110, 220, 130),
-    "sand": (240, 205, 110),
-}
+FONT_DIR = Path("/usr/share/fonts/truetype")
+SERIF_BOLD = str(FONT_DIR / "dejavu" / "DejaVuSerif-Bold.ttf")
+SANS = str(FONT_DIR / "dejavu" / "DejaVuSans.ttf")
+SANS_BOLD = str(FONT_DIR / "dejavu" / "DejaVuSans-Bold.ttf")
+SANS_OBLIQUE = str(FONT_DIR / "liberation" / "LiberationSans-Italic.ttf")
 
-FONT_DIR = "/usr/share/fonts/truetype/dejavu/"
-FACES = {
-    "serif_b": FONT_DIR + "DejaVuSerif-Bold.ttf",
-    "serif": FONT_DIR + "DejaVuSerif.ttf",
-    "sans_b": FONT_DIR + "DejaVuSans-Bold.ttf",
-    "sans": FONT_DIR + "DejaVuSans.ttf",
-}
+PAPER = (247, 242, 231)
+INK = (26, 25, 23)
+BODY = (52, 50, 46)
+MUTED = (96, 90, 78)
+RED = (158, 30, 38)
+RULE = (60, 56, 48)
+SKY = (197, 218, 233)
+SEA_LIGHT = (52, 102, 143)
+SEA_DARK = (22, 58, 96)
+HULL = (84, 90, 99)
+HULL_DARK = (52, 57, 65)
+SMOKE = (150, 148, 144)
+SUN = (243, 197, 84)
+WHITE = (250, 250, 248)
 
 
-def load_font(face, size):
-    return ImageFont.truetype(FACES[face], size)
+def load(path, size):
+    return ImageFont.truetype(path, size)
 
 
-def fit_words(pen, body, face_font, width):
-    """Greedy word wrap measured in pixels."""
-    fitted, current = [], ""
-    for word in body.split():
-        candidate = word if current == "" else current + " " + word
-        if pen.textlength(candidate, font=face_font) <= width:
-            current = candidate
-        elif current:
-            fitted.append(current)
-            current = word
+def wrap(draw, text, font, width):
+    """Split text into lines that fit width, on word boundaries."""
+    lines, current = [], ""
+    for word in text.split():
+        trial = word if not current else current + " " + word
+        if draw.textlength(trial, font=font) <= width:
+            current = trial
         else:
+            if current:
+                lines.append(current)
             current = word
     if current:
-        fitted.append(current)
-    return fitted
+        lines.append(current)
+    return lines
 
 
-def draw_paragraph(pen, origin, body, face_font, colour, width, spacing=1.18):
-    """Draw wrapped text starting at origin; return the y below it."""
-    x, y = origin
-    gap = int(face_font.size * spacing)
-    for row in fit_words(pen, body, face_font, width):
-        pen.text((x, y), row, font=face_font, fill=colour)
-        y += gap
+def block(draw, x, y, text, font, fill, width, leading):
+    """Draw wrapped text at (x, y); return the y below it."""
+    for line in wrap(draw, text, font, width):
+        draw.text((x, y), line, font=font, fill=fill)
+        y += leading
     return y
 
 
-def draw_centred(pen, middle, top, body, face_font, colour):
-    span = pen.textlength(body, font=face_font)
-    pen.text((middle - span / 2, top), body, font=face_font, fill=colour)
+def centered(draw, y, text, font, fill):
+    w = draw.textlength(text, font=font)
+    draw.text(((SIDE - w) / 2, y), text, font=font, fill=fill)
 
 
-canvas = Image.new("RGB", (SIDE, SIDE), PALETTE["paper"])
-pen = ImageDraw.Draw(canvas)
+def sea_battle(draw, box):
+    """The lead picture: a corvette under sea-drone attack."""
+    x0, y0, x1, y1 = box
+    horizon = y0 + int((y1 - y0) * 0.46)
+    draw.rectangle([x0, y0, x1, horizon], fill=SKY)
+    draw.rectangle([x0, horizon, x1, y1], fill=SEA_DARK)
+    # lighter swells rolling toward the viewer, clipped to the box
+    yy, band = horizon + 10, 0
+    while yy + 11 <= y1:
+        if band % 2 == 0:
+            draw.rectangle([x0, yy, x1, yy + 11], fill=SEA_LIGHT)
+        yy += 22
+        band += 1
+    # sun, low over the water
+    cx, cy, r = x1 - 84, y0 + 52, 26
+    draw.ellipse([cx - r - 9, cy - r - 9, cx + r + 9, cy + r + 9],
+                 fill=(250, 224, 150))
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=SUN)
+    # the corvette, side-on, bow to the right
+    base = horizon + 50
+    draw.polygon([(x0 + 56, base + 10), (x0 + 84, base - 20),
+                  (x0 + 330, base - 20), (x0 + 356, base + 10)], fill=HULL)
+    draw.rectangle([x0 + 150, base - 44, x0 + 240, base - 20], fill=HULL)
+    draw.rectangle([x0 + 172, base - 60, x0 + 218, base - 44],
+                   fill=HULL_DARK)
+    draw.line([x0 + 195, base - 60, x0 + 195, base - 86],
+              fill=HULL_DARK, width=4)
+    draw.line([x0 + 176, base - 80, x0 + 214, base - 80],
+              fill=HULL_DARK, width=3)
+    draw.rectangle([x0 + 286, base - 34, x0 + 318, base - 20], fill=HULL_DARK)
+    # smoke from a hit amidships, kept inside the frame
+    for dx, dy, rr in [(0, 0, 11), (13, -15, 14), (28, -29, 16),
+                       (44, -42, 18), (60, -52, 19)]:
+        px, py = x0 + 205 + dx, base - 64 + dy
+        draw.ellipse([px - rr, py - rr, px + rr, py + rr], fill=SMOKE)
+    # two sea drones closing in, wakes behind them
+    for dx, dy in [(404, 40), (330, 82)]:
+        px, py = x0 + dx, horizon + dy
+        draw.polygon([(px, py), (px + 56, py + 6), (px + 48, py + 16),
+                      (px + 8, py + 15)], fill=(30, 32, 36))
+        draw.polygon([(px + 10, py), (px + 18, py - 11), (px + 26, py)],
+                     fill=(30, 32, 36))
+        for k in range(3):
+            draw.line([px - 14 - k * 18, py + 8 + k * 2, px - 2 - k * 18,
+                       py + 8 + k * 2], fill=WHITE, width=2)
+    # spray where the first drone struck, at the bow
+    for dx in range(-6, 26, 8):
+        draw.line([x0 + 348 + dx, base + 6, x0 + 340 + dx, base - 16],
+                  fill=WHITE, width=3)
+    draw.rectangle([x0, y0, x1, y1], outline=RULE, width=2)
 
 
-def masthead():
-    draw_centred(pen, SIDE / 2, 26, "THE WORLD TODAY",
-                 load_font("serif_b", 74), PALETTE["ink"])
-    pen.line([(MARGIN, 118), (RIGHT, 118)], fill=PALETTE["ink"], width=3)
-    pen.line([(MARGIN, 124), (RIGHT, 124)], fill=PALETTE["ink"], width=1)
-    draw_centred(pen, SIDE / 2, 136, "TUESDAY 24 NOVEMBER 2026",
-                 load_font("sans_b", 41), PALETTE["red"])
-    draw_centred(pen, SIDE / 2, 188, "THE DAY'S WORLD NEWS IN ONE IMAGE",
-                 load_font("sans", 19), PALETTE["grey"])
-    pen.line([(MARGIN, 222), (RIGHT, 222)], fill=PALETTE["ink"], width=2)
+def story(draw, x, y, width, number, head, body, head_font, body_font):
+    draw.ellipse([x, y + 2, x + 30, y + 32], fill=RED)
+    num_w = draw.textlength(number, font=body_font)
+    draw.text((x + (30 - num_w) / 2, y + 5), number, font=body_font,
+              fill=WHITE)
+    y = block(draw, x + 42, y, head, head_font, INK, width - 42, 27)
+    block(draw, x + 42, y + 2, body, body_font, BODY, width - 42, 23)
 
 
-LEAD_TOP, LEAD_BOTTOM = 238, 486
-LEAD_TEXT_X = 396
-LEAD_TEXT_W = RIGHT - LEAD_TEXT_X - 24
+def paint():
+    img = Image.new("RGB", (SIDE, SIDE), PAPER)
+    draw = ImageDraw.Draw(img)
+    margin = 36
+    right = SIDE - margin
+
+    # masthead
+    centered(draw, 22, "THE DAILY RECORD", load(SERIF_BOLD, 57), INK)
+    draw.line([margin, 96, right, 96], fill=RULE, width=3)
+    draw.line([margin, 101, right, 101], fill=RULE, width=1)
+    centered(draw, 110, "TUESDAY 24 NOVEMBER 2026", load(SANS_BOLD, 30), RED)
+    centered(draw, 146, "The world's news of one day, in one picture",
+             load(SANS_OBLIQUE, 19), MUTED)
+    draw.line([margin, 176, right, 176], fill=RULE, width=1)
+
+    # lead story
+    draw.text((margin, 188), "LEAD STORY · THE MEDITERRANEAN",
+              font=load(SANS_BOLD, 19), fill=RED)
+    y = block(draw, margin, 214,
+              "Ukraine's sea drones sink a Russian corvette off Libya",
+              load(SERIF_BOLD, 43), INK, right - margin, 50)
+    sea_battle(draw, (margin, y + 10, 596, y + 218))
+    lead_x = 620
+    ly = y + 14
+    ly = block(draw, lead_x, ly,
+               "Sea drones sank the corvette Merkury at the Benghazi "
+               "naval base on 23 November — the Black Sea war reaches "
+               "the Mediterranean.", load(SANS, 21), BODY,
+               right - lead_x, 27)
+    block(draw, lead_x, ly + 10,
+          "Libya is demanding explanations from Kyiv, and the United "
+          "Nations is seeking a probe into the strike.",
+          load(SANS, 21), BODY, right - lead_x, 27)
+    cap_y = y + 226
+    draw.text((margin, cap_y), "A corvette burns as naval drones close in.",
+              font=load(SANS_OBLIQUE, 17), fill=MUTED)
+    draw.line([margin, cap_y + 28, right, cap_y + 28], fill=RULE, width=1)
+
+    # four more stories, two by two
+    head_font, body_font = load(SANS_BOLD, 23), load(SANS, 19)
+    top = cap_y + 42
+    col_w = (right - margin - 28) // 2
+    story(draw, margin, top, col_w, "1", "Russia tests NATO skies",
+          "25 airspace violations against NATO members in 2026 — four "
+          "times the 2024 total. Two missiles and a drone crashed in "
+          "Poland on 20 Nov.", head_font, body_font)
+    story(draw, margin + col_w + 28, top, col_w, "2",
+          "14 nations back the Rohingya ruling",
+          "Britain, Spain, Canada, Australia and ten more recognise "
+          "the ICJ ruling that Myanmar committed genocide against "
+          "the Rohingya.", head_font, body_font)
+    second = top + 126
+    story(draw, margin, second, col_w, "3", "Markets surge on Nvidia U-turn",
+          "Huang reinstated after Trump intervened: Kospi +6–7%, "
+          "Nikkei +3.9%, Nasdaq +6.5%, S&P 500 +4.7%.",
+          head_font, body_font)
+    story(draw, margin + col_w + 28, second, col_w, "4",
+          "US sanctions Iran money houses",
+          "The Treasury sanctions two dozen Iranian exchange houses "
+          "amid Hormuz tensions; Tehran sets 7 conditions.",
+          head_font, body_font)
+
+    # wire strip
+    strip_y = second + 124
+    draw.rectangle([margin, strip_y, right, strip_y + 54], fill=INK)
+    block(draw, margin + 14, strip_y + 6,
+          "PUTIN 'OPEN TO ARTICLE 5-STYLE GUARANTEES FOR UKRAINE' "
+          "— NO NATO TROOPS, REPORTS SAY",
+          load(SANS_BOLD, 18), WHITE, right - margin - 28, 23)
+
+    # footline: the rest of the day in brief
+    foot_y = strip_y + 70
+    draw.line([margin, foot_y, right, foot_y], fill=RULE, width=1)
+    block(draw, margin, foot_y + 12,
+          "ALSO TODAY — COP31 collapses in Antalya over fossil-fuel "
+          "wording, the first failure since 2009; COP32 goes to "
+          "Addis Ababa · Nepal: 5.6 earthquake near the China "
+          "border · Factory fire in Cikande, Indonesia, with "
+          "casualties · Ninth measles death in Pennsylvania",
+          load(SANS, 18), BODY, right - margin, 24)
+
+    img.save(TARGET, "JPEG", quality=88)
+    print(f"painted {TARGET} ({TARGET.stat().st_size} bytes)")
 
 
-def lead_story():
-    pen.rectangle([MARGIN, LEAD_TOP, RIGHT, LEAD_BOTTOM],
-                  outline=PALETTE["ink"], width=2)
-    # pictogram: a warship listing and sinking off Libya, a naval
-    # drone above it, waves below, stamped SUNK
-    pen.text((66, 258), "OFF LIBYA", font=load_font("sans_b", 19),
-             fill=PALETTE["navy"])
-    # sea
-    for crest in (66, 130, 194, 258):
-        pen.arc([crest, 396, crest + 64, 428], start=0, end=180,
-                fill=PALETTE["navy"], width=3)
-    # listing hull
-    pen.polygon([(84, 340), (300, 372), (282, 396), (96, 372)],
-                fill=PALETTE["steel"], outline=PALETTE["ink"])
-    pen.rectangle([150, 322, 190, 348], fill=PALETTE["navy"])
-    pen.line([(170, 296), (170, 322)], fill=PALETTE["ink"], width=3)
-    pen.line([(170, 296), (196, 306)], fill=PALETTE["red"], width=3)
-    # smoke from the ship (below the kicker, above the hull)
-    pen.ellipse([112, 302, 140, 328], fill=PALETTE["grey"])
-    pen.ellipse([96, 318, 122, 342], fill=PALETTE["grey"])
-    # naval drone above
-    pen.ellipse([292, 276, 308, 290], fill=PALETTE["ink"])
-    pen.line([(300, 290), (300, 302)], fill=PALETTE["ink"], width=2)
-    pen.line([(288, 296), (312, 296)], fill=PALETTE["ink"], width=2)
-    pen.rectangle([258, 420, 360, 452], fill=PALETTE["red"])
-    pen.text((268, 426), "SUNK", font=load_font("sans_b", 22),
-             fill=PALETTE["white"])
-    # lead words
-    pen.text((LEAD_TEXT_X, 256), "BENGHAZI, LIBYA",
-             font=load_font("sans_b", 19), fill=PALETTE["red"])
-    after_head = draw_paragraph(
-        pen, (LEAD_TEXT_X, 284), "UKRAINE SINKS RUSSIAN WARSHIP IN LIBYA",
-        load_font("serif_b", 36), PALETTE["ink"], LEAD_TEXT_W, spacing=1.12)
-    draw_paragraph(
-        pen, (LEAD_TEXT_X, after_head + 8),
-        "Sea drones sank the corvette Merkury at the Benghazi "
-        "naval base on 23 Nov. Libya demands answers; the UN "
-        "seeks a probe.",
-        load_font("serif", 22), PALETTE["grey"], LEAD_TEXT_W, spacing=1.25)
-
-
-PANEL_W, PANEL_H = 466, 148
-
-
-def story_panel(left, top, kicker, headline, sub, painter):
-    pen.rectangle([left, top, left + PANEL_W, top + PANEL_H],
-                  outline=PALETTE["ink"], width=2)
-    pen.text((left + 14, top + 9), kicker, font=load_font("sans_b", 15),
-             fill=PALETTE["red"])
-    painter(left + 14, top + 33)
-    draw_paragraph(pen, (left + 120, top + 31), headline,
-                   load_font("serif_b", 26), PALETTE["ink"],
-                   PANEL_W - 134, spacing=1.12)
-    pen.text((left + 120, top + 122), sub, font=load_font("sans", 15),
-             fill=PALETTE["grey"])
-
-
-def paint_jet(x, y):
-    # a jet crossing a radar sweep, with a warning triangle
-    pen.ellipse([x + 6, y + 8, x + 86, y + 88], outline=PALETTE["steel"],
-                width=2)
-    pen.line([(x + 46, y + 48), (x + 82, y + 12)], fill=PALETTE["steel"],
-             width=2)
-    pen.polygon([(x + 10, y + 44), (x + 62, y + 28), (x + 70, y + 36),
-                 (x + 26, y + 56)], fill=PALETTE["navy"])
-    pen.polygon([(x + 44, y + 30), (x + 58, y + 18), (x + 60, y + 30)],
-                fill=PALETTE["navy"])
-    pen.polygon([(x + 66, y + 62), (x + 84, y + 84), (x + 52, y + 84)],
-                fill=PALETTE["gold"], outline=PALETTE["ink"], width=2)
-    pen.text((x + 71, y + 68), "!", font=load_font("sans_b", 16),
-             fill=PALETTE["ink"])
-
-
-def paint_scales(x, y):
-    # scales of justice
-    pen.line([(x + 50, y + 6), (x + 50, y + 82)], fill=PALETTE["ink"],
-             width=3)
-    pen.line([(x + 14, y + 18), (x + 86, y + 18)], fill=PALETTE["ink"],
-             width=3)
-    pen.line([(x + 14, y + 18), (x + 14, y + 44)], fill=PALETTE["ink"],
-             width=2)
-    pen.line([(x + 86, y + 18), (x + 86, y + 44)], fill=PALETTE["ink"],
-             width=2)
-    pen.pieslice([x + 2, y + 44, x + 26, y + 62], start=0, end=180,
-                 fill=PALETTE["gold"], outline=PALETTE["ink"], width=2)
-    pen.pieslice([x + 74, y + 44, x + 98, y + 62], start=0, end=180,
-                 fill=PALETTE["gold"], outline=PALETTE["ink"], width=2)
-    pen.line([(x + 42, y + 6), (x + 58, y + 6)], fill=PALETTE["ink"],
-             width=3)
-
-
-def paint_chart(x, y):
-    # a rising market chart with an arrowhead
-    pen.line([(x + 8, y + 84), (x + 8, y + 8)], fill=PALETTE["ink"],
-             width=2)
-    pen.line([(x + 8, y + 84), (x + 96, y + 84)], fill=PALETTE["ink"],
-             width=2)
-    trend = [(x + 12, y + 70), (x + 32, y + 62), (x + 52, y + 66),
-             (x + 72, y + 38), (x + 90, y + 18)]
-    pen.line(trend, fill=PALETTE["green"], width=4)
-    pen.polygon([(x + 90, y + 18), (x + 78, y + 20), (x + 86, y + 32)],
-                fill=PALETTE["green"])
-
-
-def paint_bank(x, y):
-    # a bank / exchange house: pediment, columns, dollar sign
-    pen.polygon([(x + 8, y + 22), (x + 52, y + 2), (x + 96, y + 22)],
-                fill=PALETTE["white"], outline=PALETTE["ink"], width=2)
-    pen.rectangle([x + 8, y + 26, x + 96, y + 34], fill=PALETTE["white"],
-                  outline=PALETTE["ink"], width=2)
-    for column in (x + 16, x + 38, x + 60, x + 82):
-        pen.line([(column, y + 36), (column, y + 78)], fill=PALETTE["ink"],
-                 width=3)
-    pen.line([(x + 8, y + 80), (x + 96, y + 80)], fill=PALETTE["ink"],
-             width=3)
-    pen.text((x + 42, y + 44), "$", font=load_font("sans_b", 26),
-             fill=PALETTE["red"])
-
-
-STORIES = [
-    (36, 500, "NATO - AIRSPACE", "RUSSIA TESTS NATO SKIES",
-     "25 violations in 2026, 4x the 2024 total", paint_jet),
-    (522, 500, "THE HAGUE - JUSTICE", "14 NATIONS BACK ICJ ROHINGYA RULING",
-     "UK, Spain, Canada, Australia + 10 more", paint_scales),
-    (36, 660, "MARKETS - STOCKS", "STOCKS SURGE AS NVIDIA REINSTATES HUANG",
-     "Kospi +6-7%, Nikkei +3.9%, Nasdaq +6.5%", paint_chart),
-    (522, 660, "WASHINGTON - SANCTIONS", "US SANCTIONS DOZENS OF IRAN EXCHANGE HOUSES",
-     "Hormuz tension; Tehran sets 7 conditions", paint_bank),
-]
-
-
-STRIP_TOP, STRIP_BOTTOM = 820, 900
-
-
-def guarantee_strip():
-    pen.rectangle([MARGIN, STRIP_TOP, RIGHT, STRIP_BOTTOM],
-                  fill=PALETTE["navy"])
-    # a shield pictogram
-    pen.polygon([(106, STRIP_TOP + 14), (142, STRIP_TOP + 14),
-                 (142, STRIP_TOP + 48), (124, STRIP_TOP + 66),
-                 (106, STRIP_TOP + 48)], fill=PALETTE["white"],
-                outline=PALETTE["sand"], width=2)
-    pen.text((120, STRIP_TOP + 26), "5", font=load_font("sans_b", 22),
-             fill=PALETTE["navy"])
-    pen.text((164, STRIP_TOP + 12),
-             "PUTIN OPEN TO ARTICLE 5-STYLE GUARANTEES",
-             font=load_font("serif_b", 24), fill=PALETTE["white"])
-    pen.text((164, STRIP_TOP + 50),
-             "for Ukraine, if no NATO troops deploy - missiles and a drone fell in Poland",
-             font=load_font("sans_b", 19), fill=PALETTE["sand"])
-
-
-def also_today():
-    pen.line([(MARGIN, 914), (RIGHT, 914)], fill=PALETTE["ink"], width=2)
-    pen.text((MARGIN, 922), "ALSO TODAY", font=load_font("sans_b", 19),
-             fill=PALETTE["red"])
-    draw_paragraph(
-        pen, (MARGIN, 948),
-        "COP31 collapsed in Antalya over fossil-fuel wording - "
-        "first failure since 2009; COP32 to Addis Ababa - "
-        "Nepal quake 5.6 near the China border - factory fire "
-        "in Cikande, Indonesia, with casualties - 9th measles "
-        "death in Pennsylvania",
-        load_font("serif", 18), PALETTE["ink"], SIDE - 2 * MARGIN,
-        spacing=1.15)
-
-
-masthead()
-lead_story()
-for left, top, kicker, headline, sub, painter in STORIES:
-    story_panel(left, top, kicker, headline, sub, painter)
-guarantee_strip()
-also_today()
-
-canvas.save("art.jpg", quality=88)
-print("wrote art.jpg", canvas.size)
+if __name__ == "__main__":
+    paint()
